@@ -2,14 +2,14 @@
 使用项目内 Factor/FactorUtils 计算 factor.md 中“动量 MOM”因子。
 输出列：mom_q, mom_m20, mom_m5, mom_m1
 """
-from panda_factor.generate.factor_base import Factor
+from custom_factors.base_factor import BaseCustomFactor
 
-class MomFactor(Factor):
+
+class MomFactor(BaseCustomFactor):
     """动量因子：M20/M5/M1 与 MOM_Q"""
 
     def calculate(self, factors):
-        # FactorDataWrapper 会返回 FactorSeries，这里取 .series 以防直接给 pd.Series
-        close = factors["close"].series if hasattr(factors["close"], "series") else factors["close"]
+        close = self.get_series(factors, "close")
 
         # 按单股票序列进行简单位移，用 REF 与通达信一致（不做分组）
         m20 = close / self.REF(close, 20) - 1
