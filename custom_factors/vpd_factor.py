@@ -15,10 +15,10 @@ class VPDFactor(BaseCustomFactor):
 
         ret = close / (self.REF(close, 1) + 1e-12) - 1
         ret_ma = self.MA(ret, 20)
-        ret_std = self.STD(ret, 20)
+        ret_std = self.STDDEV(ret, 20)
 
         amt_ma = self.MA(amount, 20)
-        amt_std = self.STD(amount, 20)
+        amt_std = self.STDDEV(amount, 20)
 
         vpd_z1 = (ret - ret_ma) / (ret_std + 1e-4) - (amount - amt_ma) / (amt_std + 1e-4)
 

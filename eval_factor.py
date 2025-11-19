@@ -37,7 +37,12 @@ mp_context = mp.get_context("spawn")
 
 def parse_args():
     p = argparse.ArgumentParser(description="因子评估（IC / RankIC）")
-    p.add_argument("--factor-file-dir", required=True, help="因子文件目录（每股一个 CSV）")
+    target_group = p.add_mutually_exclusive_group(required=True)
+    target_group.add_argument("--factor-file-dir", help="单一因子目录（每股一个 CSV）")
+    target_group.add_argument(
+        "--factor-root",
+        help="批量模式：根目录下的每个子目录视为一个因子组，逐个评估",
+    )
     p.add_argument("--factor-col", required=False, help="要评估的因子列名；不填则批量评估所有非 date/code 列")
     p.add_argument("--start-date", default=None, help="开始日期，YYYYMMDD 或 YYYY-MM-DD，可选")
     p.add_argument("--end-date", default=None, help="结束日期，YYYYMMDD 或 YYYY-MM-DD，可选")
@@ -47,7 +52,81 @@ def parse_args():
     p.add_argument("--workers", type=int, default=mp.cpu_count(), help="并行进程数（用于读文件合并）")
     p.add_argument("--mode", choices=("mongo", "local"), default="local", help="mongo 使用 factor_ic_workflow；local 直接用本地行情算 IC")
     p.add_argument("--price-dir", default="datasets", help="mode=local 时，日线行情目录（与 calc_factor 产出的同源数据）")
+    p.add_argument(
+        "--summary-csv",
+        default="output/factor_ic_summary.csv",
+        help="汇总结果输出路径，留空表示不写入",
+    )
     return p.parse_args()
+
+
+def _discover_factor_dirs(args) -> List[str]:
+    if args.factor_root:
+        candidates: List[str] = []
+        for entry in sorted(os.listdir(args.factor_root)):
+            full_path = os.path.join(args.factor_root, entry)
+            if os.path.isdir(full_path):
+                candidates.append(full_path)
+        if not candidates:
+            raise FileNotFoundError(f"未在 {args.factor_root} 下找到有效子目录")
+        return candidates
+    return [args.factor_file_dir]
+
+
+def _evaluate_directory(dir_path: str, args) -> pd.DataFrame | None:
+    files = glob.glob(os.path.join(dir_path, "*.csv"))
+    if not files:
+        print(f"[warn] 目录为空: {dir_path}")
+        return None
+
+    with mp_context.Pool(processes=args.workers) as pool:
+        df_list: List[pd.DataFrame] = pool.starmap(load_one, [(p, args.factor_col) for p in files])
+
+    df_all = pd.concat(df_list, ignore_index=True)
+    if args.start_date:
+        df_all = df_all[df_all["date"] >= pd.to_datetime(args.start_date)]
+    if args.end_date:
+        df_all = df_all[df_all["date"] <= pd.to_datetime(args.end_date)]
+
+    df_all = df_all.sort_values(["date", "symbol"]).reset_index(drop=True)
+
+    if args.factor_col:
+        factor_cols = [args.factor_col]
+    else:
+        exclude_cols = {"date", "symbol", "code", "name"}
+        factor_cols = [col for col in df_list[0].columns if col not in exclude_cols]
+        if not factor_cols:
+            raise ValueError("未检测到可用因子列，至少需要 1 列")
+
+    results = []
+    for col in factor_cols:
+        df_factor = df_all[["date", "symbol", col]].rename(columns={col: "factor"})
+
+        if args.mode == "mongo":
+            from panda_factor.analysis.factor_ic_workflow import factor_ic_workflow  # type: ignore
+
+            factor_ic_workflow(
+                df_factor=df_factor,
+                adjustment_cycle=args.adjustment_cycle,
+                group_number=args.group_number,
+                factor_direction=args.direction,
+            )
+            continue
+
+        summary = compute_local_ic(
+            df_factor=df_factor,
+            price_dir=args.price_dir,
+            lag=args.adjustment_cycle,
+        )
+        summary.insert(0, "factor", col)
+        results.append(summary)
+
+    if results:
+        dir_result = pd.concat(results, ignore_index=True)
+        print("==== 因子批量评估结果 ====")
+        print(dir_result)
+        return dir_result
+    return None
 
 
 def load_one(path: str, factor_col: str | None) -> pd.DataFrame:
@@ -131,58 +210,29 @@ def compute_local_ic(df_factor: pd.DataFrame, price_dir: str, lag: int) -> pd.Da
 
 def main():
     args = parse_args()
-    files = glob.glob(os.path.join(args.factor_file_dir, "*.csv"))
-    if not files:
-        raise FileNotFoundError(f"目录为空: {args.factor_file_dir}")
+    factor_dirs = _discover_factor_dirs(args)
 
-    factor_col = args.factor_col
-
-# 并行读取因子文件
-    with mp_context.Pool(processes=args.workers) as pool:
-        df_list: List[pd.DataFrame] = pool.starmap(load_one, [(p, args.factor_col) for p in files])
-
-    df_all = pd.concat(df_list, ignore_index=True)
-    if args.start_date:
-        df_all = df_all[df_all["date"] >= pd.to_datetime(args.start_date)]
-    if args.end_date:
-        df_all = df_all[df_all["date"] <= pd.to_datetime(args.end_date)]
-
-    df_all = df_all.sort_values(["date", "symbol"]).reset_index(drop=True)
-
-    # 自动获取需要分析的列
-    if args.factor_col:
-        factor_cols = [args.factor_col]
-    else:
-        exclude_cols = {"date", "symbol", "code", "name"}
-        factor_cols = [col for col in df_list[0].columns if col not in exclude_cols]
-        if not factor_cols:
-            raise ValueError("未检测到可用因子列，至少需要 1 列")
-
-    results = []
-    for col in factor_cols:
-        df_factor = df_all[["date", "symbol", col]].rename(columns={col: "factor"})
-
-        if args.mode == "mongo":
-            from panda_factor.analysis.factor_ic_workflow import factor_ic_workflow  # type: ignore
-            factor_ic_workflow(
-                df_factor=df_factor,
-                adjustment_cycle=args.adjustment_cycle,
-                group_number=args.group_number,
-                factor_direction=args.direction
-            )
+    aggregate: List[pd.DataFrame] = []
+    for dir_path in factor_dirs:
+        group_name = os.path.basename(os.path.normpath(dir_path))
+        print(f"\n==== 开始评估因子组: {group_name} ({dir_path}) ====")
+        dir_result = _evaluate_directory(dir_path, args)
+        if dir_result is None:
             continue
+        dir_result.insert(0, "factor_group", group_name)
+        aggregate.append(dir_result)
 
-        summary = compute_local_ic(
-            df_factor=df_factor,
-            price_dir=args.price_dir,
-            lag=args.adjustment_cycle
-        )
-        summary.insert(0, "factor", col)
-        results.append(summary)
+    if aggregate:
+        final_df = pd.concat(aggregate, ignore_index=True)
+        if len(aggregate) > 1:
+            print("\n==== 全部因子组汇总 ====")
+            print(final_df)
 
-    if results:
-        print("==== 因子批量评估结果 ====")
-        print(pd.concat(results, ignore_index=True))
+        if args.summary_csv:
+            summary_path = os.path.abspath(args.summary_csv)
+            os.makedirs(os.path.dirname(summary_path), exist_ok=True)
+            final_df.to_csv(summary_path, index=False, encoding="utf-8-sig")
+            print(f"[ok] 汇总结果已保存至 {summary_path}")
 
 
 if __name__ == "__main__":

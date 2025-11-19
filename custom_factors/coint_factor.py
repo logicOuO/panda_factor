@@ -21,7 +21,7 @@ class CointFactor(BaseCustomFactor):
         beta_v = self.SLOPE(close, 20)
         res1 = idx_series - beta_v * close
         res_ma = self.MA(res1, 20)
-        res_std = self.STD(res1, 20)
+        res_std = self.STDDEV(res1, 20)
         res_z1 = (res1 - res_ma) / (res_std + 1e-4)
 
         return pd.DataFrame({

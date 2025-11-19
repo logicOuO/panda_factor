@@ -16,11 +16,8 @@ class FlowFactor(BaseCustomFactor):
     def calculate(self, factors):
         close = self.get_series(factors, "close")
         amount = self.get_series(factors, "amount")
-        try:
-            market_cap = self.get_series(factors, "market_cap")
-        except KeyError:
-            capital = self.get_series(factors, "capital")
-            market_cap = capital * close
+        capital = self.get_series(factors, "capital")
+        market_cap = capital * close
 
         flow_mv1 = amount / (market_cap + 1e-4)
         flow_mv = self.MIN(self.MAX(flow_mv1, 0.01), 100.0)

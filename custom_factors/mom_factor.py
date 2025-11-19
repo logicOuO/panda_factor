@@ -17,7 +17,7 @@ class MomFactor(BaseCustomFactor):
         m1 = close / self.REF(close, 1) - 1
 
         ma20 = self.MA(close, 20)
-        std20 = self.STD(close, 20)
+        std20 = self.STDDEV(close, 20)
         diff = close - ma20
         mom_q = self.SIGN(diff) * (diff ** 2) / (std20 ** 2 + 1e-4)
 

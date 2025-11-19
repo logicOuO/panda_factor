@@ -11,7 +11,7 @@ class TurnFactor(BaseCustomFactor):
         capital = self.get_series(factors, "capital")
 
         turn1 = volume / (capital + 1e-4)
-        turn_z = (turn1 - self.MA(turn1, 20)) / (self.STD(turn1, 20) + 1e-4)
+        turn_z = (turn1 - self.MA(turn1, 20)) / (self.STDDEV(turn1, 20) + 1e-4)
         turn_q = turn1 / (self.HHV(turn1, 250) + 1e-4) * 0.9
         turn_j = (turn1 / (self.REF(turn1, 1) + 1e-4) > 2).astype(float)
         turn_c = (turn1 > 0.3).astype(float)

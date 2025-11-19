@@ -15,7 +15,7 @@ class SkewFactor(BaseCustomFactor):
 
         ret = close / (self.REF(close, 1) + 1e-12) - 1
         ma_ret = self.MA(ret, 20)
-        std_ret = self.STD(ret, 20)
+        std_ret = self.STDDEV(ret, 20)
         norm_ret = (ret - ma_ret) / (std_ret + 1e-4)
         skew_r = self.MA(np.power(norm_ret, 3), 20)
 

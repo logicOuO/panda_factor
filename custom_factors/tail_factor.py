@@ -11,7 +11,7 @@ class TailFactor(BaseCustomFactor):
         close = self.get_series(factors, "close")
         ret = np.log(close / (self.REF(close, 1) + 1e-12))
         tail_md = self.LLV(ret, 20)
-        tail_sk = self.STD(ret, 20)
+        tail_sk = self.STDDEV(ret, 20)
         tail_v1 = self.EMA(ret, 10)
         tail_v = self.LLV(tail_v1, 40)
         abs_ret = self.ABS(ret)

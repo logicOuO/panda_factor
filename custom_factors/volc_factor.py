@@ -20,7 +20,7 @@ class VolCFactor(BaseCustomFactor):
         volc_a = atr10 / (self.HHV(atr10, 20) + 1e-4)
 
         ret = close / (prev_close + 1e-12) - 1
-        std_ret5 = self.STD(ret, 5)
+        std_ret5 = self.STDDEV(ret, 5)
         volc_s = std_ret5 / (self.HHV(std_ret5, 15) + 1e-4)
 
         range_ratio = hl_range / (close + 1e-4)

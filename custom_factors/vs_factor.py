@@ -14,7 +14,7 @@ class VSFactor(BaseCustomFactor):
 
         sum_c_amt = self.SUM(close * amount, 20)
         sum_amt = self.SUM(amount, 20)
-        vs_v = 3 * (sum_c_amt / (sum_amt + 1e-4) - self.MA(close, 20)) / (self.STD(close, 20) + 1e-4)
+        vs_v = 3 * (sum_c_amt / (sum_amt + 1e-4) - self.MA(close, 20)) / (self.STDDEV(close, 20) + 1e-4)
 
         body_balance = ((close - low) - (high - close)) / (high - low + 1e-4)
         vs_c = self.SUM(body_balance * amount, 20)
